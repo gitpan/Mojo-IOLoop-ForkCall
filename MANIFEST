@@ -1,0 +1,12 @@
+Build.PL
+Changes
+ex/simple.pl
+lib/Mojo/IOLoop/ForkCall.pm
+MANIFEST			This list of files
+META.json
+META.yml
+README.pod
+t/bad_deserialize.t
+t/fork_call.t
+t/transmission.t
+t/weaken.t
