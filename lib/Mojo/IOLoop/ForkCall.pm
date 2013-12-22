@@ -2,11 +2,12 @@ package Mojo::IOLoop::ForkCall;
 
 use Mojo::Base 'Mojo::EventEmitter';
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 $VERSION = eval $VERSION;
 
 use Mojo::IOLoop;
 use Child;
+# use Child::IPC::Pipely;
 
 use Exporter 'import';
 
@@ -19,8 +20,9 @@ has 'weaken'       => 0;
 
 sub run {
   my ($self, $job) = (shift, shift);
-  my $args = shift if @_ and ref $_[0] eq 'ARRAY';
-  my $cb   = shift if @_;
+  my ($args, $cb);
+  $args = shift if @_ and ref $_[0] eq 'ARRAY';
+  $cb   = shift if @_;
 
   my $serializer = $self->serializer;
 
@@ -123,7 +125,7 @@ Upon request this module exports the following functions.
 
 =head2 fork_call
 
- fork_call { my @args = @_; child code; return @res }, @args, sub { my @res = @_; parent callback }
+ fork_call { my @args = @_; child code; return @res } @args, sub { my @res = @_; parent callback }
 
 This function is a drop-in replacement for L<AnyEvent::Util>'s C<fork_call>.
 Because it is attempting to mimic that function the api is different to that provided by the OO interface descibed below.
