@@ -2,12 +2,11 @@ package Mojo::IOLoop::ForkCall;
 
 use Mojo::Base 'Mojo::EventEmitter';
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 $VERSION = eval $VERSION;
 
 use Mojo::IOLoop;
-use Child;
-# use Child::IPC::Pipely;
+use IO::Pipely 'pipely';
 
 use Exporter 'import';
 
@@ -24,44 +23,56 @@ sub run {
   $args = shift if @_ and ref $_[0] eq 'ARRAY';
   $cb   = shift if @_;
 
+  my ($r, $w) = pipely; 
   my $serializer = $self->serializer;
 
-  my $child = $self->_child(sub {
-    my $parent = shift;
+  my $pid = fork;
+  if (not defined $pid) {
+    die "Failed to fork: $!";
+  }
+  if ($pid == 0) {
+    # child
+    close $r;
+
     local $@;
     my $res = eval {
       local $SIG{__DIE__};
       $serializer->([undef, $job->(@$args)]);
     };
     $res = $serializer->([$@]) if $@;
-    $parent->write($res);
-  });
+    syswrite $w, $res;
 
-  my $stream = Mojo::IOLoop::Stream->new($child->read_handle);
-  $self->ioloop->stream($stream);
+    exit 0;
+  } else {
+    # parent
+    close $w;
 
-  my $buffer = '';
-  $stream->on( read  => sub { $buffer .= $_[1] } );
-  if ($self->weaken) {
-    require Scalar::Util;
-    Scalar::Util::weaken($self);
+    my $stream = Mojo::IOLoop::Stream->new($r);
+    $self->ioloop->stream($stream);
+
+    my $buffer = '';
+    $stream->on( read  => sub { $buffer .= $_[1] } );
+
+    if ($self->weaken) {
+      require Scalar::Util;
+      Scalar::Util::weaken($self);
+    }
+
+    my $deserializer = $self->deserializer;
+    $stream->on( close => sub {
+      my $res = do {
+        local $@;
+        eval { $deserializer->($buffer) } || [$@];
+      };
+      $self->$cb(@$res) if $cb;
+      $self->emit( finish => @$res ) if $self;
+
+      waitpid $pid, 0;
+    });
+
+    return $pid;
   }
-  $stream->on( close => sub {
-    my $res = do {
-      local $@;
-      eval { $self->deserializer->($buffer) } || [$@];
-    };
-    $self->$cb(@$res) if $cb;
-    $self->emit( finish => @$res ) if $self;
-    return unless $child;
-    # $child->kill(9) unless $child->is_complete; 
-    $child->wait;
-  });
-
-  return $child;
 }
-
-sub _child { Child->new($_[1], pipely => 1)->start }
 
 ## functions
 
@@ -136,7 +147,7 @@ The callback will receive the deserialized return values from the child block as
 Any error will be available in C<$@>.
 
 The underlying ForkCall object will use the default attributes described below.
-As with C<run> the return value is the L<Child> object, just in case it is needed to kill the child process.
+As with C<run> the return value is the child's pid, just in case it is necessary to kill the child process.
 
 =head1 EVENTS
 
@@ -199,17 +210,17 @@ Takes a code reference (required) which is the job to be run on the child.
 If the next argument is an array reference, these will be passed to the child job.
 If the last argument is a code reference, it will be called immediately before the finish event is emitted, its arguments are the same as the C<finish> event.
 
-Returns the L<Child> object, just in case you should need to manually kill it.
+Returns the child's pid, just in case you should need to manually kill it.
 
 =head1 SEE ALSO
 
 =over
 
-=item L<Child>
-
-=item L<IO::Pipely>
+=item L<Mojo::IOLoop>
 
 =item L<AnyEvent::Util>
+
+=item L<IO::Pipely>
 
 =back
 
