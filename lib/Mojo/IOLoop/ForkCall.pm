@@ -2,11 +2,13 @@ package Mojo::IOLoop::ForkCall;
 
 use Mojo::Base 'Mojo::EventEmitter';
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 $VERSION = eval $VERSION;
 
 use Mojo::IOLoop;
 use IO::Pipely 'pipely';
+use POSIX ();
+use Perl::OSType 'is_os_type';
 
 use Exporter 'import';
 
@@ -27,9 +29,8 @@ sub run {
   my $serializer = $self->serializer;
 
   my $pid = fork;
-  if (not defined $pid) {
-    die "Failed to fork: $!";
-  }
+  die "Failed to fork: $!" unless defined $pid;
+
   if ($pid == 0) {
     # child
     close $r;
@@ -42,7 +43,12 @@ sub run {
     $res = $serializer->([$@]) if $@;
     syswrite $w, $res;
 
+    # attempt to generalize exiting from child cleanly on all platforms
+    # adapted from POE::Wheel::Run mosty
+    eval { POSIX::_exit(0) } unless is_os_type('Windows');
+    eval { CORE::kill KILL => $$ };
     exit 0;
+
   } else {
     # parent
     close $w;
