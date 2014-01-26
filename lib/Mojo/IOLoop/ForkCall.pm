@@ -2,16 +2,17 @@ package Mojo::IOLoop::ForkCall;
 
 use Mojo::Base 'Mojo::EventEmitter';
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 $VERSION = eval $VERSION;
 
 use Mojo::IOLoop;
 use IO::Pipely 'pipely';
 use POSIX ();
+
 use Perl::OSType 'is_os_type';
+use constant IS_WINDOWS => is_os_type('Windows');
 
 use Exporter 'import';
-
 our @EXPORT_OK = qw/fork_call/;
 
 has 'ioloop'       => sub { Mojo::IOLoop->singleton };
@@ -44,8 +45,8 @@ sub run {
     syswrite $w, $res;
 
     # attempt to generalize exiting from child cleanly on all platforms
-    # adapted from POE::Wheel::Run mosty
-    eval { POSIX::_exit(0) } unless is_os_type('Windows');
+    # adapted from POE::Wheel::Run mostly
+    eval { POSIX::_exit(0) } unless IS_WINDOWS;
     eval { CORE::kill KILL => $$ };
     exit 0;
 
