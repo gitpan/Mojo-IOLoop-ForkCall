@@ -2,12 +2,13 @@ package Mojo::IOLoop::ForkCall;
 
 use Mojo::Base 'Mojo::EventEmitter';
 
-our $VERSION = '0.10';
+our $VERSION = '0.11';
 $VERSION = eval $VERSION;
 
 use Mojo::IOLoop;
 use IO::Pipely 'pipely';
 use POSIX ();
+use Scalar::Util ();
 
 use Perl::OSType 'is_os_type';
 use constant IS_WINDOWS => is_os_type('Windows');
@@ -22,6 +23,11 @@ has 'deserializer' => sub { require Storable; \&Storable::thaw   };
 has 'weaken'       => 0;
 
 sub run {
+  my ($self, @args) = @_;
+  $self->ioloop->delay(sub{ $self->_run(@args) });
+}
+
+sub _run {
   my ($self, $job) = (shift, shift);
   my ($args, $cb);
   $args = shift if @_ and ref $_[0] eq 'ARRAY';
@@ -29,10 +35,10 @@ sub run {
 
   my ($r, $w) = pipely; 
 
-  my $pid = fork;
-  die "Failed to fork: $!" unless defined $pid;
+  my $child = fork;
+  die "Failed to fork: $!" unless defined $child;
 
-  if ($pid == 0) {
+  if ($child == 0) {
     # child
 
     # cleanup running loops
@@ -61,6 +67,7 @@ sub run {
   } else {
     # parent
     close $w;
+    my $parent = $$;
 
     my $stream = Mojo::IOLoop::Stream->new($r)->timeout(0);
     $self->ioloop->stream($stream);
@@ -68,13 +75,11 @@ sub run {
     my $buffer = '';
     $stream->on( read  => sub { $buffer .= $_[1] } );
 
-    if ($self->weaken) {
-      require Scalar::Util;
-      Scalar::Util::weaken($self);
-    }
+    Scalar::Util::weaken($self) if $self->weaken;
 
     my $deserializer = $self->deserializer;
     $stream->on( close => sub {
+      return unless $$ == $parent; # not my stream!
       my $res = do {
         local $@;
         eval { $deserializer->($buffer) } || [$@];
@@ -82,10 +87,10 @@ sub run {
       $self->$cb(@$res) if $cb;
       $self->emit( finish => @$res ) if $self;
 
-      waitpid $pid, 0;
+      waitpid $child, 0;
     });
 
-    return $pid;
+    return $child;
   }
 }
 

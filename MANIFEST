@@ -4,6 +4,8 @@ ex/mojolicious.pl
 ex/simple.pl
 lib/Mojo/IOLoop/ForkCall.pm
 MANIFEST			This list of files
+META.json
+META.yml
 README.pod
 t/bad_deserialize.t
 t/basic.t
@@ -11,7 +13,6 @@ t/big_send.t
 t/functional.t
 t/loops.t
 t/mojolicious.t
+t/multiple.t
 t/transmission.t
 t/weaken.t
-META.yml
-META.json
