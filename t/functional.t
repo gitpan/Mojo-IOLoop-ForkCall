@@ -16,17 +16,23 @@ ok $tick, 'main process not blocked';
 is_deeply \@res, ['good', ['test']], 'return value correct';
 Mojo::IOLoop->remove($recurring);
 
-my $err;
-fork_call { die "Died!\n" } sub { $err = $@; Mojo::IOLoop->stop };
-Mojo::IOLoop->start;
-chomp $err;
-is $err, 'Died!';
+{
+  my $err;
+  fork_call { die "Died!\n" } sub { $err = $@; Mojo::IOLoop->stop };
+  Mojo::IOLoop->start;
+  chomp $err;
+  is $err, 'Died!';
+}
 
-Mojo::IOLoop->singleton->reactor->unsubscribe('error')->on( error => sub { $err = $_[1] } );
-eval { fork_call { 1 } sub { die "Argh\n" } };
-Mojo::IOLoop->start;
-chomp $err;
-like $err, qr/Argh/, 'parent error goes to reactor error handler';
+SKIP: {
+  skip 'Perl versions < 5.14 handle errors in parent callback badly', 1 if $^V < v5.14.0;
+  my $err;
+  Mojo::IOLoop->singleton->reactor->unsubscribe('error')->on( error => sub { $err = $_[1]; Mojo::IOLoop->stop } );
+  fork_call { return 'ok' } sub { die "Argh\n" };
+  Mojo::IOLoop->start;
+  chomp $err;
+  like $err, qr/Argh/, 'parent callback error goes to reactor error handler';
+}
 
 done_testing;
 
