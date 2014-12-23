@@ -2,7 +2,7 @@ package Mojo::IOLoop::ForkCall;
 
 use Mojo::Base 'Mojo::EventEmitter';
 
-our $VERSION = '0.15';
+our $VERSION = '0.16';
 $VERSION = eval $VERSION;
 
 use Mojo::IOLoop;
@@ -87,11 +87,13 @@ sub _run {
       return unless $$ == $parent; # not my stream!
       local $@;
 
+      # clean up the zombie. It won't block, it's already dead.
+      waitpid $child, 0;
+
       # attempt to deserialize, emit error and return early
       my $res = eval { $deserializer->($buffer) };
       if ($@) { 
         $self->emit( error => $@ ) if $self;
-        waitpid $child, 0;
         return;
       }
 
@@ -103,7 +105,6 @@ sub _run {
       eval { $self->emit( finish => @$res ) if $self };
       $self->emit( error => $@ ) if $@ and $self;
 
-      waitpid $child, 0;
     });
   }
 }
@@ -168,6 +169,8 @@ Return values are serialized and sent from the child to the parent via an approp
 
 This module is heavily inspired by L<AnyEvent::Util>'s C<fork_call>.
 
+For simple cases in a L<Mojolicious> web app, a helper is also available in L<Mojolicious::Plugin::ForkCall>.
+
 =head1 WARNINGS
 
 Some platforms do not fork well, some platforms don't pipe well.
@@ -225,7 +228,7 @@ Defaults to C<\&Storable::freeze>.
 
 The code reference will be passed a single array reference. 
 The first argument will be any error or undef if no error occured.
-If there was no error, the remaining element of the array will be the values returned by the job (evaluated in list context).
+If there was no error, the remaining elements of the array will be the values returned by the job (evaluated in list context).
 
 =head2 deserializer
 
@@ -312,6 +315,14 @@ L<http://github.com/jberger/Mojo-IOLoop-ForkCall>
 =head1 AUTHOR
 
 Joel Berger, E<lt>joel.a.berger@gmail.comE<gt>
+
+=head1 CONTRIBUTORS
+
+=over
+
+=item Dan Book (Grinnz)
+
+=back
 
 =head1 COPYRIGHT AND LICENSE
 
